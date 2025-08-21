@@ -1,0 +1,19 @@
+# TaskFlow - Sistema di gestione task aziendali
+
+Webapp moderna per la gestione di task con autenticazione Google e database Firebase.
+
+## Funzionalità
+
+- 🔐 Login con Google
+- 📋 Creazione e gestione task
+- 👥 Assegnazione task tra utenti
+- 💬 Sistema commenti
+- 📱 Design mobile-first
+- ⚡ Real-time con Firebase
+
+## Setup locale
+
+1. Clona il repository
+```bash
+git clone [URL_DEL_TUO_REPO]
+cd taskflow-webapp

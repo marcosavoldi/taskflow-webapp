@@ -9,10 +9,13 @@ import {
   addDoc, 
   updateDoc, 
   doc, 
+  getDoc,
+  setDoc,
   onSnapshot, 
   query, 
   orderBy,
   where,
+  or,
   serverTimestamp 
 } from 'firebase/firestore';
 import { auth, googleProvider, db, ADMIN_EMAIL } from './firebase/config';
@@ -54,8 +57,16 @@ const TaskManagementApp = () => {
   useEffect(() => {
     if (!currentUser) return;
 
-    // Listen to tasks
-    const tasksQuery = query(collection(db, 'tasks'), orderBy('createdAt', 'desc'));
+    // Listen to tasks - only those assigned to or created by current user
+    const tasksQuery = query(
+      collection(db, 'tasks'), 
+      or(
+        where('assignedTo', '==', currentUser.id),
+        where('createdBy', '==', currentUser.id)
+      ),
+      orderBy('createdAt', 'desc')
+    );
+    
     const unsubscribeTasks = onSnapshot(tasksQuery, (snapshot) => {
       const tasksData = snapshot.docs.map(doc => ({
         id: doc.id,
@@ -88,26 +99,31 @@ const TaskManagementApp = () => {
       const result = await signInWithPopup(auth, googleProvider);
       const user = result.user;
       
-      // Add user to Firestore if not exists
-      await addDoc(collection(db, 'users'), {
-        id: user.uid,
-        email: user.email,
-        name: user.displayName,
-        photoURL: user.photoURL,
-        approved: user.email === ADMIN_EMAIL,
-        createdAt: serverTimestamp()
-      });
-
-      // Send notification to admin if not admin
-      if (user.email !== ADMIN_EMAIL) {
-        await addDoc(collection(db, 'notifications'), {
-          type: 'user_approval',
-          message: `Nuovo utente richiede approvazione: ${user.email}`,
-          targetUserId: 'admin',
-          userId: user.uid,
-          read: false,
+      // Check if user already exists
+      const userDoc = await getDoc(doc(db, 'users', user.uid));
+      
+      if (!userDoc.exists()) {
+        // Add user only if doesn't exist
+        await setDoc(doc(db, 'users', user.uid), {
+          id: user.uid,
+          email: user.email,
+          name: user.displayName,
+          photoURL: user.photoURL,
+          approved: user.email === ADMIN_EMAIL,
           createdAt: serverTimestamp()
         });
+
+        // Send notification to admin if not admin
+        if (user.email !== ADMIN_EMAIL) {
+          await addDoc(collection(db, 'notifications'), {
+            type: 'user_approval',
+            message: `Nuovo utente richiede approvazione: ${user.email}`,
+            targetUserId: 'admin',
+            userId: user.uid,
+            read: false,
+            createdAt: serverTimestamp()
+          });
+        }
       }
     } catch (error) {
       console.error('Error signing in:', error);
@@ -220,7 +236,9 @@ const TaskManagementApp = () => {
 
   // Task filtering
   const getFilteredTasks = () => {
-    let filtered = tasks;
+    let filtered = tasks.filter(task => 
+      task.status !== 'chiuso' && task.status !== 'completato'
+    );
     
     if (searchTerm) {
       filtered = filtered.filter(task => 
@@ -238,14 +256,26 @@ const TaskManagementApp = () => {
 
   // Dashboard task categorization
   const getTasksByCategory = () => {
-    const assignedToMe = tasks.filter(task => task.assignedTo === currentUser.id && task.status !== 'chiuso');
-    const createdByMe = tasks.filter(task => task.createdBy === currentUser.id);
+    const assignedToMe = tasks.filter(task => 
+      task.assignedTo === currentUser.id && 
+      task.status !== 'chiuso' && 
+      task.status !== 'completato'
+    );
+    const createdByMe = tasks.filter(task => 
+      task.createdBy === currentUser.id && 
+      task.status !== 'chiuso' && 
+      task.status !== 'completato'
+    );
+    const completedByMe = tasks.filter(task => 
+      task.createdBy === currentUser.id && 
+      (task.status === 'chiuso' || task.status === 'completato')
+    );
     const overdue = assignedToMe.filter(task => isOverdue(task.dueDate));
     
     return {
       assignedToMe: assignedToMe.sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate)),
-      createdByMe: createdByMe.filter(task => task.status !== 'chiuso'),
-      completedByMe: createdByMe.filter(task => task.status === 'chiuso'),
+      createdByMe,
+      completedByMe,
       overdue
     };
   };
@@ -780,22 +810,32 @@ const TaskManagementApp = () => {
                 ))}
               </div>
 
-              <div className="add-comment">
-                <textarea
-                  value={newComment}
-                  onChange={(e) => setNewComment(e.target.value)}
-                  placeholder="Aggiungi un commento..."
-                  className="form-textarea"
-                  rows={3}
-                />
-                <button 
-                  onClick={handleAddComment}
-                  className="btn btn-primary"
-                  disabled={!newComment.trim()}
-                >
-                  Aggiungi Commento
-                </button>
-              </div>
+              {/* Allow comments only if task is not closed/completed */}
+              {task.status !== 'chiuso' && task.status !== 'completato' && (
+                <div className="add-comment">
+                  <textarea
+                    value={newComment}
+                    onChange={(e) => setNewComment(e.target.value)}
+                    placeholder="Aggiungi un commento..."
+                    className="form-textarea"
+                    rows={3}
+                  />
+                  <button 
+                    onClick={handleAddComment}
+                    className="btn btn-primary"
+                    disabled={!newComment.trim()}
+                  >
+                    Aggiungi Commento
+                  </button>
+                </div>
+              )}
+
+              {/* Show message if task is closed */}
+              {(task.status === 'chiuso' || task.status === 'completato') && (
+                <div className="task-closed-message">
+                  <p>🔒 Task completato - Non è più possibile aggiungere commenti</p>
+                </div>
+              )}
             </div>
           </div>
         </div>

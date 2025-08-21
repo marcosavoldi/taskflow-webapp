@@ -1766,6 +1766,22 @@ body {
     padding: 0.4rem 0.8rem;
   }
 
+  /* Task closed message */
+.task-closed-message {
+  background: rgba(107, 114, 128, 0.1);
+  border: 1px solid rgba(107, 114, 128, 0.2);
+  border-radius: 12px;
+  padding: 1rem;
+  text-align: center;
+  margin-top: 1rem;
+}
+
+.task-closed-message p {
+  color: #6b7280;
+  font-weight: 500;
+  margin: 0;
+}
+
   .info-row {
     grid-template-columns: 1fr;
     gap: 0.5rem;

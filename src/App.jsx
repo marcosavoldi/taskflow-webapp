@@ -11,11 +11,11 @@ import {
   doc, 
   getDoc,
   setDoc,
+  getDocs,
   onSnapshot, 
   query, 
   orderBy,
   where,
-  or,
   serverTimestamp 
 } from 'firebase/firestore';
 import { auth, googleProvider, db, ADMIN_EMAIL } from './firebase/config';
@@ -57,16 +57,8 @@ const TaskManagementApp = () => {
   useEffect(() => {
     if (!currentUser) return;
 
-    // Listen to tasks - only those assigned to or created by current user
-    const tasksQuery = query(
-      collection(db, 'tasks'), 
-      or(
-        where('assignedTo', '==', currentUser.id),
-        where('createdBy', '==', currentUser.id)
-      ),
-      orderBy('createdAt', 'desc')
-    );
-    
+    // Listen to ALL tasks for now (fix the filtering later)
+    const tasksQuery = query(collection(db, 'tasks'), orderBy('createdAt', 'desc'));
     const unsubscribeTasks = onSnapshot(tasksQuery, (snapshot) => {
       const tasksData = snapshot.docs.map(doc => ({
         id: doc.id,
@@ -74,7 +66,11 @@ const TaskManagementApp = () => {
         dueDate: doc.data().dueDate?.toDate?.()?.toISOString() || doc.data().dueDate,
         createdAt: doc.data().createdAt?.toDate?.()?.toISOString() || doc.data().createdAt
       }));
-      setTasks(tasksData);
+      // Filter in JavaScript for now
+      const userTasks = tasksData.filter(task => 
+        task.assignedTo === currentUser.id || task.createdBy === currentUser.id
+      );
+      setTasks(userTasks);
     });
 
     // Listen to users
@@ -99,12 +95,14 @@ const TaskManagementApp = () => {
       const result = await signInWithPopup(auth, googleProvider);
       const user = result.user;
       
-      // Check if user already exists
-      const userDoc = await getDoc(doc(db, 'users', user.uid));
+      // Check if user already exists by querying the collection
+      const usersRef = collection(db, 'users');
+      const userQuery = query(usersRef, where('email', '==', user.email));
+      const userSnapshot = await getDocs(userQuery);
       
-      if (!userDoc.exists()) {
+      if (userSnapshot.empty) {
         // Add user only if doesn't exist
-        await setDoc(doc(db, 'users', user.uid), {
+        await addDoc(collection(db, 'users'), {
           id: user.uid,
           email: user.email,
           name: user.displayName,
